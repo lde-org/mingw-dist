@@ -6,9 +6,16 @@ on:
 jobs:
     build:
         runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                include:
+                    - target: x86_64-w64-mingw32
+                      archive: mingw-w64-x86_64
+                    - target: aarch64-w64-mingw32
+                      archive: mingw-w64-aarch64
 
         env:
-            TARGET: x86_64-w64-mingw32
+            TARGET: ${{ matrix.target }}
             PREFIX: ${{ github.workspace }}/mingw-install
             BINUTILS_VERSION: "2.44"
             GCC_VERSION: "15.1.0"
@@ -80,8 +87,7 @@ jobs:
                     --host=$TARGET \
                     --prefix=$PREFIX/$TARGET \
                     --with-sysroot=$PREFIX \
-                    --disable-lib32 \
-                    --enable-lib64
+                    --disable-lib32
                   make -j$(nproc)
                   make install
 
@@ -105,10 +111,10 @@ jobs:
             - name: Package
               run: |
                   cd $PREFIX
-                  7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/mingw-w64-x86_64.7z .
+                  7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.archive }}.7z .
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: mingw-w64-x86_64
-                  path: mingw-w64-x86_64.7z
+                  name: ${{ matrix.archive }}
+                  path: ${{ matrix.archive }}.7z
