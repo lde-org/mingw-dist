@@ -84,6 +84,7 @@ jobs:
 
             - name: Build mingw-w64 CRT
               run: |
+                  export PATH=$PREFIX/bin:$PATH
                   mkdir build-crt && cd build-crt
                   ../mingw-w64/mingw-w64-crt/configure \
                     --host=$TARGET \
