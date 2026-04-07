@@ -7,6 +7,7 @@ jobs:
     build:
         runs-on: ubuntu-latest
         strategy:
+            fail-fast: false
             matrix:
                 include:
                     - target: x86_64-w64-mingw32
@@ -69,6 +70,7 @@ jobs:
                     --target=$TARGET \
                     --prefix=$PREFIX \
                     --with-sysroot=$PREFIX/$TARGET \
+                    --with-native-system-header-dir=/include \
                     --enable-languages=c,c++ \
                     --disable-bootstrap \
                     --disable-multilib \
