@@ -1,0 +1,115 @@
+name: Build MinGW-w64
+
+on:
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        env:
+            TARGET: x86_64-w64-mingw32
+            PREFIX: ${{ github.workspace }}/mingw-install
+            BINUTILS_VERSION: "2.44"
+            GCC_VERSION: "15.1.0"
+            MAKE_VERSION: "4.4.1"
+
+        steps:
+            - name: Install dependencies
+              run: |
+                  sudo apt-get update -q
+                  sudo apt-get install -y --no-install-recommends \
+                    build-essential flex bison texinfo \
+                    libgmp-dev libmpfr-dev libmpc-dev \
+                    wget p7zip-full
+
+            - name: Clone mingw-w64
+              run: git clone --depth=1 https://github.com/mingw-w64/mingw-w64.git
+
+            - name: Download sources
+              run: |
+                  wget -q https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz
+                  wget -q https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz
+                  wget -q https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz
+                  tar xf binutils-${BINUTILS_VERSION}.tar.xz
+                  tar xf gcc-${GCC_VERSION}.tar.xz
+                  tar xf make-${MAKE_VERSION}.tar.gz
+
+            - name: Build binutils
+              run: |
+                  mkdir build-binutils && cd build-binutils
+                  ../binutils-${BINUTILS_VERSION}/configure \
+                    --target=$TARGET \
+                    --prefix=$PREFIX \
+                    --disable-nls \
+                    --disable-multilib \
+                    --disable-werror
+                  make -j$(nproc)
+                  make install
+
+            - name: Install mingw-w64 headers
+              run: |
+                  mkdir build-headers && cd build-headers
+                  ../mingw-w64/mingw-w64-headers/configure \
+                    --host=$TARGET \
+                    --prefix=$PREFIX/$TARGET
+                  make install
+
+            - name: Build GCC (compilers only)
+              run: |
+                  mkdir build-gcc && cd build-gcc
+                  ../gcc-${GCC_VERSION}/configure \
+                    --target=$TARGET \
+                    --prefix=$PREFIX \
+                    --enable-languages=c,c++ \
+                    --disable-bootstrap \
+                    --disable-multilib \
+                    --disable-nls \
+                    --disable-libgomp \
+                    --disable-libquadmath \
+                    --disable-libssp \
+                    --disable-shared \
+                    --without-headers \
+                    --with-sysroot=$PREFIX
+                  make -j$(nproc) all-gcc
+                  make install-gcc
+
+            - name: Build mingw-w64 CRT
+              run: |
+                  mkdir build-crt && cd build-crt
+                  ../mingw-w64/mingw-w64-crt/configure \
+                    --host=$TARGET \
+                    --prefix=$PREFIX/$TARGET \
+                    --with-sysroot=$PREFIX \
+                    --disable-lib32 \
+                    --enable-lib64
+                  make -j$(nproc)
+                  make install
+
+            - name: Build libgcc
+              run: |
+                  cd build-gcc
+                  make -j$(nproc) all-target-libgcc
+                  make install-target-libgcc
+
+            - name: Build make (cross-compiled for Windows)
+              run: |
+                  mkdir build-make && cd build-make
+                  ../make-${MAKE_VERSION}/configure \
+                    --host=$TARGET \
+                    --prefix=$PREFIX \
+                    --disable-nls \
+                    --without-guile
+                  make -j$(nproc)
+                  make install
+
+            - name: Package
+              run: |
+                  cd $PREFIX
+                  7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/mingw-w64-x86_64.7z .
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: mingw-w64-x86_64
+                  path: mingw-w64-x86_64.7z
