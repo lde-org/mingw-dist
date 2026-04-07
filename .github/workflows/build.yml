@@ -61,6 +61,7 @@ jobs:
                   ../gcc-${GCC_VERSION}/configure \
                     --target=$TARGET \
                     --prefix=$PREFIX \
+                    --with-sysroot=$PREFIX/$TARGET \
                     --enable-languages=c,c++ \
                     --disable-bootstrap \
                     --disable-multilib \
@@ -68,9 +69,7 @@ jobs:
                     --disable-libgomp \
                     --disable-libquadmath \
                     --disable-libssp \
-                    --disable-shared \
-                    --without-headers \
-                    --with-sysroot=$PREFIX
+                    --disable-shared
                   make -j$(nproc) all-gcc
                   make install-gcc
 
