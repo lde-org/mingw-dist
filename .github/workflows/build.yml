@@ -96,12 +96,14 @@ jobs:
 
             - name: Build libgcc
               run: |
+                  export PATH=$PREFIX/bin:$PATH
                   cd build-gcc
                   make -j$(nproc) all-target-libgcc
                   make install-target-libgcc
 
             - name: Build make (cross-compiled for Windows)
               run: |
+                  export PATH=$PREFIX/bin:$PATH
                   mkdir build-make && cd build-make
                   ../make-${MAKE_VERSION}/configure \
                     --host=$TARGET \
