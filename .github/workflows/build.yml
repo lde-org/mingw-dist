@@ -86,7 +86,7 @@ jobs:
                   ../mingw-w64/mingw-w64-crt/configure \
                     --host=$TARGET \
                     --prefix=$PREFIX/$TARGET \
-                    --with-sysroot=$PREFIX \
+                    --with-sysroot=$PREFIX/$TARGET \
                     --disable-lib32
                   make -j$(nproc)
                   make install
