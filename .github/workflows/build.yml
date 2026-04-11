@@ -153,10 +153,49 @@ jobs:
           find $PREFIX -type f ! -name "*.*" \
             -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
+      - name: Stage package
+        run: |
+          STAGE=${{ github.workspace }}/stage
+          mkdir -p $STAGE
+
+          # Copy top-level dirs
+          cp -r $PREFIX/bin $STAGE/
+          cp -r $PREFIX/libexec $STAGE/
+          cp -r $PREFIX/lib $STAGE/
+          cp -r $PREFIX/include $STAGE/
+
+          # Copy target dir structure
+          mkdir -p $STAGE/$TARGET/include
+          cp -r $PREFIX/$TARGET/include $STAGE/$TARGET/
+
+          # Only copy the libs we actually need
+          mkdir -p $STAGE/$TARGET/lib
+          for lib in \
+            libmsvcrt libucrt libucrtbase libntdll \
+            libkernel32 libuser32 libadvapi32 libshell32 \
+            libws2_32 libmingwex libmingw32 librpcrt4 \
+            libole32 liboleaut32 libshlwapi libgdi32 \
+            libimm32 libversion libwinmm libwinspool \
+            libcomdlg32 libcomctl32 libuuid libsecur32 \
+            libnetapi32 libuserenv libpsapi libdbghelp \
+            libcrypt32 libwintrust libncrypt libbcrypt \
+            libiphlpapi libdnsapi libsetupapi libcfgmgr32; do
+            cp $PREFIX/$TARGET/lib/${lib}.a $STAGE/$TARGET/lib/ 2>/dev/null || true
+          done
+
+          # Copy gcc runtime libs
+          cp $PREFIX/$TARGET/lib/libgcc*.a $STAGE/$TARGET/lib/ 2>/dev/null || true
+          cp $PREFIX/$TARGET/lib/libstdc++*.a $STAGE/$TARGET/lib/ 2>/dev/null || true
+
       - name: Package
         run: |
-          cd $PREFIX
-          7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.archive }}.7z .
+          cd ${{ github.workspace }}/stage
+          7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.archive }}.7z . \
+            -xr!"share" \
+            -xr!"share" \
+            -xr!"install-tools" \
+            -xr!"plugin" \
+            -x!"bin/${TARGET}-lto-dump"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
