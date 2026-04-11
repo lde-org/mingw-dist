@@ -85,7 +85,9 @@ jobs:
       - name: Download make sources
         if: matrix.apt_mingw != ''
         run: |
+          [ -f gcc-${GCC_VERSION}.tar.xz ] || wget -q https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz
           [ -f make-${MAKE_VERSION}.tar.gz ] || wget -q https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz
+          tar xf gcc-${GCC_VERSION}.tar.xz
           tar xf make-${MAKE_VERSION}.tar.gz
 
       - name: Build binutils
