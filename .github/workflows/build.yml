@@ -16,8 +16,10 @@ jobs:
         include:
           - target: x86_64-w64-mingw32
             filename: mingw-windows-x86-64.7z
+            apt_mingw: "gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64"
           - target: aarch64-w64-mingw32
             filename: mingw-windows-aarch64.7z
+            apt_mingw: ""
 
     env:
       TARGET: ${{ matrix.target }}
@@ -36,9 +38,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential flex bison texinfo \
             libgmp-dev libmpfr-dev libmpc-dev \
-            wget p7zip-full
+            mingw-w64-common \
+            wget p7zip-full \
+            ${{ matrix.apt_mingw }}
+
+      - name: Set up apt mingw prefix
+        if: matrix.apt_mingw != ''
+        run: |
+          # Point PREFIX at the apt-installed sysroot so later steps are consistent
+          APT_PREFIX=$(dirname $(dirname $(which x86_64-w64-mingw32-gcc-posix)))
+          echo "PREFIX=$APT_PREFIX" >> $GITHUB_ENV
+          echo "$APT_PREFIX/bin" >> $GITHUB_PATH
 
       - name: Cache build output
+        if: matrix.apt_mingw == ''
         id: cache-build
         uses: actions/cache@v5
         with:
@@ -46,7 +59,7 @@ jobs:
           key: mingw-install-${{ matrix.target }}-binutils${{ env.BINUTILS_VERSION }}-gcc${{ env.GCC_VERSION }}-make${{ env.MAKE_VERSION }}
 
       - name: Cache source tarballs
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -56,11 +69,11 @@ jobs:
           key: sources-${{ env.BINUTILS_VERSION }}-${{ env.GCC_VERSION }}-${{ env.MAKE_VERSION }}
 
       - name: Clone mingw-w64
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: git clone --depth=1 https://github.com/mingw-w64/mingw-w64.git
 
       - name: Download sources
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           [ -f binutils-${BINUTILS_VERSION}.tar.xz ] || wget -q https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz
           [ -f gcc-${GCC_VERSION}.tar.xz ]           || wget -q https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz
@@ -69,8 +82,14 @@ jobs:
           tar xf gcc-${GCC_VERSION}.tar.xz
           tar xf make-${MAKE_VERSION}.tar.gz
 
+      - name: Download make sources
+        if: matrix.apt_mingw != ''
+        run: |
+          [ -f make-${MAKE_VERSION}.tar.gz ] || wget -q https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz
+          tar xf make-${MAKE_VERSION}.tar.gz
+
       - name: Build binutils
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-binutils && cd build-binutils
           ../binutils-${BINUTILS_VERSION}/configure \
@@ -83,7 +102,7 @@ jobs:
           make install
 
       - name: Install mingw-w64 headers
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-headers && cd build-headers
           ../mingw-w64/mingw-w64-headers/configure \
@@ -91,8 +110,8 @@ jobs:
             --prefix=$PREFIX/$TARGET
           make install
 
-      - name: Build GCC (compilers only)
-        if: steps.cache-build.outputs.cache-hit != 'true'
+      - name: Build GCC (cross-compiler)
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-gcc && cd build-gcc
           ../gcc-${GCC_VERSION}/configure \
@@ -112,7 +131,7 @@ jobs:
           make install-gcc
 
       - name: Build mingw-w64 CRT
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           mkdir build-crt && cd build-crt
@@ -125,19 +144,39 @@ jobs:
           make install
 
       - name: Build libgcc
-        if: steps.cache-build.outputs.cache-hit != 'true'
+        if: matrix.apt_mingw == '' && steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           cd build-gcc
           make -j$(nproc) all-target-libgcc
           make install-target-libgcc
 
-      - name: Patch make sources
+      - name: Build GCC for Windows (native executables)
         if: steps.cache-build.outputs.cache-hit != 'true'
+        run: |
+          export PATH=$PREFIX/bin:$PATH
+          mkdir build-gcc-native && cd build-gcc-native
+          ../gcc-${GCC_VERSION}/configure \
+            --host=$TARGET \
+            --target=$TARGET \
+            --prefix=/mingw64 \
+            --with-sysroot=$PREFIX/$TARGET \
+            --with-native-system-header-dir=/include \
+            --enable-languages=c,c++ \
+            --disable-bootstrap \
+            --disable-multilib \
+            --disable-nls \
+            --disable-libgomp \
+            --disable-libquadmath \
+            --disable-libssp \
+            --disable-shared
+          make -j$(nproc) all-gcc
+          make install-gcc DESTDIR=$PREFIX
+
+      - name: Patch make sources
         run: patch -p1 -d make-${MAKE_VERSION} < ${{ github.workspace }}/patches/make.patch
 
       - name: Build make (cross-compiled for Windows)
-        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           mkdir build-make && cd build-make
@@ -162,17 +201,14 @@ jobs:
           STAGE=${{ github.workspace }}/stage
           mkdir -p $STAGE
 
-          # Copy top-level dirs
           cp -r $PREFIX/bin $STAGE/
           cp -r $PREFIX/libexec $STAGE/
           cp -r $PREFIX/lib $STAGE/
           cp -r $PREFIX/include $STAGE/
 
-          # Copy target dir structure
           mkdir -p $STAGE/$TARGET/include
           cp -r $PREFIX/$TARGET/include $STAGE/$TARGET/
 
-          # Only copy the libs we actually need
           mkdir -p $STAGE/$TARGET/lib
           for lib in \
             libmsvcrt libucrt libucrtbase libntdll \
@@ -187,7 +223,6 @@ jobs:
             cp $PREFIX/$TARGET/lib/${lib}.a $STAGE/$TARGET/lib/ 2>/dev/null || true
           done
 
-          # Copy gcc runtime libs
           cp $PREFIX/$TARGET/lib/libgcc*.a $STAGE/$TARGET/lib/ 2>/dev/null || true
           cp $PREFIX/$TARGET/lib/libstdc++*.a $STAGE/$TARGET/lib/ 2>/dev/null || true
 
@@ -198,19 +233,24 @@ jobs:
           cd ${{ github.workspace }}/pkg
           7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.filename }} . \
             -xr!"share" \
-            -xr!"share" \
             -xr!"install-tools" \
             -xr!"plugin" \
             -x!"bin/${TARGET}-lto-dump"
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: latest
-          name: Latest
-          body: |
-            Automated build from master.
-            Commit: ${{ github.sha }}
-            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          files: ${{ matrix.filename }}
-          fail_on_unmatched_files: true
+          name: ${{ matrix.filename }}
+          path: ${{ matrix.filename }}
+
+      # - name: Upload to release
+      #   uses: softprops/action-gh-release@v2
+      #   with:
+      #     tag_name: latest
+      #     name: Latest
+      #     body: |
+      #       Automated build from master.
+      #       Commit: ${{ github.sha }}
+      #       Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      #     files: ${{ matrix.filename }}
+      #     fail_on_unmatched_files: true
