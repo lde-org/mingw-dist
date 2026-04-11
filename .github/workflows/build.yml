@@ -34,19 +34,39 @@ jobs:
             libgmp-dev libmpfr-dev libmpc-dev \
             wget p7zip-full
 
+      - name: Cache build output
+        id: cache-build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PREFIX }}
+          key: mingw-install-${{ matrix.target }}-binutils${{ env.BINUTILS_VERSION }}-gcc${{ env.GCC_VERSION }}-make${{ env.MAKE_VERSION }}
+
+      - name: Cache source tarballs
+        if: steps.cache-build.outputs.cache-hit != 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            binutils-${{ env.BINUTILS_VERSION }}.tar.xz
+            gcc-${{ env.GCC_VERSION }}.tar.xz
+            make-${{ env.MAKE_VERSION }}.tar.gz
+          key: sources-${{ env.BINUTILS_VERSION }}-${{ env.GCC_VERSION }}-${{ env.MAKE_VERSION }}
+
       - name: Clone mingw-w64
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: git clone --depth=1 https://github.com/mingw-w64/mingw-w64.git
 
       - name: Download sources
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
-          wget -q https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz
-          wget -q https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz
-          wget -q https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz
+          [ -f binutils-${BINUTILS_VERSION}.tar.xz ] || wget -q https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz
+          [ -f gcc-${GCC_VERSION}.tar.xz ]           || wget -q https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz
+          [ -f make-${MAKE_VERSION}.tar.gz ]          || wget -q https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz
           tar xf binutils-${BINUTILS_VERSION}.tar.xz
           tar xf gcc-${GCC_VERSION}.tar.xz
           tar xf make-${MAKE_VERSION}.tar.gz
 
       - name: Build binutils
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-binutils && cd build-binutils
           ../binutils-${BINUTILS_VERSION}/configure \
@@ -59,6 +79,7 @@ jobs:
           make install
 
       - name: Install mingw-w64 headers
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-headers && cd build-headers
           ../mingw-w64/mingw-w64-headers/configure \
@@ -67,6 +88,7 @@ jobs:
           make install
 
       - name: Build GCC (compilers only)
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           mkdir build-gcc && cd build-gcc
           ../gcc-${GCC_VERSION}/configure \
@@ -86,6 +108,7 @@ jobs:
           make install-gcc
 
       - name: Build mingw-w64 CRT
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           mkdir build-crt && cd build-crt
@@ -98,6 +121,7 @@ jobs:
           make install
 
       - name: Build libgcc
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           cd build-gcc
@@ -105,9 +129,11 @@ jobs:
           make install-target-libgcc
 
       - name: Patch make sources
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: patch -p1 -d make-${MAKE_VERSION} < ${{ github.workspace }}/patches/make.patch
 
       - name: Build make (cross-compiled for Windows)
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
           mkdir build-make && cd build-make
@@ -118,6 +144,14 @@ jobs:
             --without-guile
           make -j$(nproc)
           make install
+
+      - name: Strip debug info
+        run: |
+          export PATH=$PREFIX/bin:$PATH
+          find $PREFIX -type f \( -name "*.exe" -o -name "*.dll" -o -name "*.a" \) \
+            -exec $TARGET-strip --strip-unneeded {} \;
+          find $PREFIX/bin -type f ! -name "*.*" \
+            -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
       - name: Package
         run: |
