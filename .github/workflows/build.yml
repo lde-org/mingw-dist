@@ -157,6 +157,7 @@ jobs:
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: |
           export PATH=$PREFIX/bin:$PATH
+          cd gcc-${GCC_VERSION} && contrib/download_prerequisites && cd ..
           mkdir build-gcc-native && cd build-gcc-native
           ../gcc-${GCC_VERSION}/configure \
             --host=$TARGET \
@@ -164,9 +165,6 @@ jobs:
             --prefix=/mingw64 \
             --with-sysroot=$PREFIX/$TARGET \
             --with-native-system-header-dir=/include \
-            --with-gmp=/usr \
-            --with-mpfr=/usr \
-            --with-mpc=/usr \
             --enable-languages=c,c++ \
             --disable-bootstrap \
             --disable-multilib \
