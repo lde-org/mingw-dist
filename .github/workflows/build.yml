@@ -149,8 +149,8 @@ jobs:
         run: |
           export PATH=$PREFIX/bin:$PATH
           find $PREFIX -type f \( -name "*.exe" -o -name "*.dll" -o -name "*.a" \) \
-            -exec $TARGET-strip --strip-unneeded {} \;
-          find $PREFIX/bin -type f ! -name "*.*" \
+            -exec $TARGET-strip --strip-unneeded {} \; 2>/dev/null || true
+          find $PREFIX -type f ! -name "*.*" \
             -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
       - name: Package
