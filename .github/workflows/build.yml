@@ -11,9 +11,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-w64-mingw32
-            archive: mingw-w64-x86_64
+            filename: mingw-windows-x86-64.7z
           - target: aarch64-w64-mingw32
-            archive: mingw-w64-aarch64
+            filename: mingw-windows-aarch64.7z
 
     env:
       TARGET: ${{ matrix.target }}
@@ -189,16 +189,19 @@ jobs:
 
       - name: Package
         run: |
-          cd ${{ github.workspace }}/stage
-          7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.archive }}.7z . \
+          mkdir -p ${{ github.workspace }}/pkg/mingw64
+          cp -r ${{ github.workspace }}/stage/. ${{ github.workspace }}/pkg/mingw64/
+          cd ${{ github.workspace }}/pkg
+          7z a -t7z -m0=lzma2 -mx=9 ${{ github.workspace }}/${{ matrix.filename }} . \
             -xr!"share" \
             -xr!"share" \
             -xr!"install-tools" \
             -xr!"plugin" \
             -x!"bin/${TARGET}-lto-dump"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ matrix.archive }}
-          path: ${{ matrix.archive }}.7z
+          tag_name: latest
+          files: ${{ matrix.filename }}
+          overwrite: true
