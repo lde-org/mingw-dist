@@ -164,6 +164,9 @@ jobs:
             --prefix=/mingw64 \
             --with-sysroot=$PREFIX/$TARGET \
             --with-native-system-header-dir=/include \
+            --with-gmp=/usr \
+            --with-mpfr=/usr \
+            --with-mpc=/usr \
             --enable-languages=c,c++ \
             --disable-bootstrap \
             --disable-multilib \
