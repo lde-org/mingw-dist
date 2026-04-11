@@ -203,5 +203,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
+          name: Latest
+          body: |
+            Automated build from master.
+            Commit: ${{ github.sha }}
+            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           files: ${{ matrix.filename }}
-          overwrite: true
+          fail_on_unmatched_files: true
